@@ -33,18 +33,42 @@ impl WriteTo for InitializationSegment {
 /// 4.3 File Type Box (ISO/IEC 14496-12).
 #[allow(missing_docs)]
 #[derive(Debug, Default)]
-pub struct FileTypeBox;
+pub struct FileTypeBox {
+    pub major_brand: String,
+    pub minor_version: u32,
+    pub compatible_brands: Vec<String>,
+}
+
+impl FileTypeBox {
+    pub fn new_with_default() -> Self {
+        FileTypeBox { 
+            major_brand: "isom".to_string(), 
+            minor_version: 512, 
+            compatible_brands: Vec::<String>::new() }
+    }
+}
+
 impl Mp4Box for FileTypeBox {
+
     const BOX_TYPE: [u8; 4] = *b"ftyp";
 
     fn box_payload_size(&self) -> Result<u32> {
-        //Ok(8)
-        Ok(12)
+        let mut size = 0;
+        size += self.major_brand.len();
+        size += 4; //minor_version
+        for s in &self.compatible_brands {
+            size += s.len();
+        }
+        
+        Ok(size as u32)
     }
     fn write_box_payload<W: Write>(&self, mut writer: W) -> Result<()> {
-        write_all!(writer, b"isom"); // major_brand
-        write_u32!(writer, 512); // minor_version
-        write_all!(writer, b"dash"); // minor_version
+        write_all!(writer, self.major_brand.as_bytes()); // major_brand
+        write_u32!(writer, self.minor_version); // minor_version
+        for b in &self.compatible_brands {
+            write_all!(writer, b.as_bytes()); // minor_version
+        }
+        
         Ok(())
     }
 }

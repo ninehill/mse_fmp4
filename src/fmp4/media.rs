@@ -114,7 +114,7 @@ impl TrackFragmentBox {
         };
         TrackFragmentBox {
             tfhd_box: TrackFragmentHeaderBox::new(track_id),
-            tfdt_box: TrackFragmentBaseMediaDecodeTimeBox,
+            tfdt_box: TrackFragmentBaseMediaDecodeTimeBox::new(),
             trun_box: TrackRunBox::default(),
         }
     }
@@ -203,8 +203,21 @@ impl Mp4Box for TrackFragmentHeaderBox {
 }
 
 /// 8.8.12 Track fragment decode time (ISO/IEC 14496-12).
-#[derive(Debug)]
-pub struct TrackFragmentBaseMediaDecodeTimeBox;
+#[allow(missing_docs)]
+#[derive(Debug, Default)]
+pub struct TrackFragmentBaseMediaDecodeTimeBox {
+    pub base_media_decode_time : u32    
+}
+
+#[allow(missing_docs)]
+impl TrackFragmentBaseMediaDecodeTimeBox {
+    pub fn new() -> Self {
+        TrackFragmentBaseMediaDecodeTimeBox { 
+            base_media_decode_time: 0 
+        }
+    }
+}
+
 impl Mp4Box for TrackFragmentBaseMediaDecodeTimeBox {
     const BOX_TYPE: [u8; 4] = *b"tfdt";
 
@@ -215,7 +228,7 @@ impl Mp4Box for TrackFragmentBaseMediaDecodeTimeBox {
         Ok(4)
     }
     fn write_box_payload<W: Write>(&self, mut writer: W) -> Result<()> {
-        write_u32!(writer, 0); // base_media_decode_time
+        write_u32!(writer, self.base_media_decode_time); // base_media_decode_time
         Ok(())
     }
 }
@@ -240,9 +253,25 @@ impl Mp4Box for TrackRunBox {
             .first()
             .cloned()
             .unwrap_or_else(Sample::default);
-        let flags = self.data_offset.is_some() as u32
+
+        let data_offset_present = self.data_offset.is_some() as u32;
+        let first_sample_flags_present = self.first_sample_flags.is_some() as u32 * 0x04;
+        let sample_duration_present = sample.duration.is_some() as u32 * 0x100;
+        //let sample_duration_present = sample.duration.is_some() as u32 * 0x0;
+        let sample_size_present = sample.size.is_some() as u32 * 0x200;
+        let sample_flags_present = sample.flags.is_some() as u32 * 0x400;
+        let sample_composition_time_offset_present = sample.composition_time_offset.is_some() as u32 * 0x800;
+
+        let flags = data_offset_present |
+        first_sample_flags_present | 
+        sample_duration_present | 
+        sample_size_present | 
+        sample_flags_present | 
+        sample_composition_time_offset_present;
+
+        /*let flags = self.data_offset.is_some() as u32
             | (self.first_sample_flags.is_some() as u32 * 0x00_0004)
-            | sample.to_box_flags();
+            | sample.to_box_flags();*/
         Some(flags)
     }
     fn box_payload_size(&self) -> Result<u32> {
