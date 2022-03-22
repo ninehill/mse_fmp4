@@ -316,7 +316,7 @@ impl Mp4Box for TrackRunBox {
 }
 
 #[allow(missing_docs)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default,Clone)]
 pub struct EventMessageBox {
     pub timescale: u32,
     pub presentation_time: u64,
@@ -326,6 +326,7 @@ pub struct EventMessageBox {
     pub value: String,
     pub payload: Vec<u8>,
 }
+
 impl Mp4Box for EventMessageBox {
     const BOX_TYPE: [u8; 4] = *b"emsg";
 

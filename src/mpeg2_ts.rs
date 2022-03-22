@@ -360,6 +360,11 @@ impl<R> TsPacketReader<R> {
     }
 }
 impl<R: ReadTsPacket> ReadTsPacket for TsPacketReader<R> {
+
+    fn peek_ts_packet(&mut self) -> Option<&TsPacket> {
+        None
+    }
+
     fn read_ts_packet(&mut self) -> mpeg2ts::Result<Option<TsPacket>> {
         if let Some(packet) = track!(self.inner.read_ts_packet())? {
             match packet.payload {
