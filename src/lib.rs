@@ -117,6 +117,7 @@ pub mod fmp4;
 pub mod io;
 pub mod mpeg2_ts;
 pub mod mpeg2_ts_video;
+pub mod extended_configuration_data;
 mod error;
 
 /// This crate specific `Result` type.

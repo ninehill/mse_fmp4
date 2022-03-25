@@ -1,7 +1,9 @@
 //! AVC (H.264) related constituent elements.
-use crate::io::AvcBitReader;
+use crate::extended_configuration_data::{self, ExtendedConfigurationData};
+use crate::io::{AvcBitReader, AvcBitWriter};
 use crate::{ErrorKind, Result};
 use byteorder::ReadBytesExt;
+use core::panic;
 use std::io::{Read, Write};
 
 /// AVC decoder configuration record.
@@ -13,15 +15,11 @@ pub struct AvcDecoderConfigurationRecord {
     pub level_idc: u8,
     pub sequence_parameter_set: Vec<u8>,
     pub picture_parameter_set: Vec<u8>,
+    pub extended_configuration_data: Option<ExtendedConfigurationData>,
 }
 impl AvcDecoderConfigurationRecord {
     pub fn write_to<W: Write>(&self, mut writer: W) -> Result<()> {
         write_u8!(writer, 1); // configuration_version
-
-        match self.profile_idc {
-            100 | 110 | 122 | 144 => track_panic!(ErrorKind::Unsupported),
-            _ => {}
-        }
         write_u8!(writer, self.profile_idc);
         write_u8!(writer, self.constraint_set_flag);
         write_u8!(writer, self.level_idc);
@@ -34,6 +32,40 @@ impl AvcDecoderConfigurationRecord {
         write_u8!(writer, 0b0000_0001); // num_of_picture_parameter_set_ext
         write_u16!(writer, self.picture_parameter_set.len() as u16);
         write_all!(writer, &self.picture_parameter_set);
+
+        match self.profile_idc {
+            100 | 110 | 122 | 144 => {
+                if self.extended_configuration_data.is_none() {
+                    track_panic!(
+                        ErrorKind::Unsupported,
+                        "Profile IDC is {}, but missing extended configuration data",
+                        self.profile_idc
+                    );
+                }
+                let extended_configuration_data =
+                    self.extended_configuration_data.as_ref().unwrap();
+
+                let mut bit_writer = AvcBitWriter::new(writer);
+
+                bit_writer.write_ue(extended_configuration_data.chroma_format)?;
+                if extended_configuration_data.chroma_format == 3 {
+                    let separate_color_plane = extended_configuration_data
+                        .separate_color_plane
+                        .unwrap_or_else(|| {
+                            panic!("Must have optional flag set when chroma format is YUV444")
+                        });
+                        bit_writer.write_bool(separate_color_plane)?;
+                }
+
+                bit_writer.write_ue(extended_configuration_data.bit_depth_luma_minus_8)?;
+                bit_writer.write_ue(extended_configuration_data.bit_depth_chroma_minus_8)?;
+                bit_writer.write_bool(extended_configuration_data.qp_prime_y_zero_transform_bypass)?;
+                bit_writer.write_bool(false)?; //False for scaling matrix
+                bit_writer.flush()?;
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 }
@@ -50,6 +82,7 @@ pub struct SpsSummary {
     frame_crop_right_offset: u64,
     frame_crop_top_offset: u64,
     frame_crop_bottom_offset: u64,
+    pub extended_configuration_data: Option<ExtendedConfigurationData>,
 }
 impl SpsSummary {
     pub fn width(&self) -> usize {
@@ -73,9 +106,34 @@ impl SpsSummary {
         let mut reader = AvcBitReader::new(reader);
         let _seq_parameter_set_id = track!(reader.read_ue())?;
 
+        let mut extended_data = None;
+
         match profile_idc {
-            101 | 110 | 122 | 244 | 44 | 83 | 86 | 118 | 128 => {
-                track_panic!(ErrorKind::Unsupported, "profile_idc={}", profile_idc)
+            100 | 110 | 122 | 144 => {
+                //let chroma_format = track!(reader.read_byte())?;
+                let chroma_format = track!(reader.read_ue())?;
+                let separate_color_plane = if chroma_format == 3 {
+                    //YUV 444
+                    Some(true)
+                } else {
+                    None
+                };
+                let bit_depth_luma_minus_8 = track!(reader.read_ue())?;
+                let bit_depth_chroma_minus_8 = track!(reader.read_ue())?;
+                let qp_prime_y_zero_transform_bypass = track!(reader.read_bit())? == 1;
+                let scaling_matrix_present = track!(reader.read_bit())? == 1;
+
+                if scaling_matrix_present {
+                    panic!("Reading scaling matrix unsupported");
+                }
+
+                extended_data = Some(ExtendedConfigurationData {
+                    chroma_format: chroma_format,
+                    separate_color_plane: separate_color_plane,
+                    bit_depth_luma_minus_8: bit_depth_luma_minus_8,
+                    bit_depth_chroma_minus_8: bit_depth_chroma_minus_8,
+                    qp_prime_y_zero_transform_bypass: qp_prime_y_zero_transform_bypass,
+                })
             }
             _ => {}
         }
@@ -135,6 +193,7 @@ impl SpsSummary {
             frame_crop_right_offset,
             frame_crop_top_offset,
             frame_crop_bottom_offset,
+            extended_configuration_data: extended_data,
         })
     }
 }

@@ -265,6 +265,7 @@ fn read_avc_aac_stream<R: ReadTsPacket>(ts_reader: R) -> Result<(AvcStream, AacS
                         level_idc: sps_summary.level_idc,
                         sequence_parameter_set: sps,
                         picture_parameter_set: pps,
+                        extended_configuration_data: None,
                     },
                     width: sps_summary.width(),
                     height: sps_summary.height(),
