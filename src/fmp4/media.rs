@@ -206,7 +206,7 @@ impl Mp4Box for TrackFragmentHeaderBox {
 #[allow(missing_docs)]
 #[derive(Debug, Default)]
 pub struct TrackFragmentBaseMediaDecodeTimeBox {
-    pub base_media_decode_time : u32    
+    pub base_media_decode_time : u64    
 }
 
 #[allow(missing_docs)]
@@ -222,13 +222,13 @@ impl Mp4Box for TrackFragmentBaseMediaDecodeTimeBox {
     const BOX_TYPE: [u8; 4] = *b"tfdt";
 
     fn box_version(&self) -> Option<u8> {
-        Some(0)
+        Some(1)
     }
     fn box_payload_size(&self) -> Result<u32> {
-        Ok(4)
+        Ok(8)
     }
     fn write_box_payload<W: Write>(&self, mut writer: W) -> Result<()> {
-        write_u32!(writer, self.base_media_decode_time); // base_media_decode_time
+        write_u64!(writer, self.base_media_decode_time); // base_media_decode_time
         Ok(())
     }
 }
