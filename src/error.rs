@@ -22,5 +22,6 @@ pub enum ErrorKind {
     InvalidInput,
     Unsupported,
     Other,
+    EOS,
 }
 impl TrackableErrorKind for ErrorKind {}
