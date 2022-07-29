@@ -24,8 +24,12 @@ impl InitializationSegment {
 }
 impl WriteTo for InitializationSegment {
     fn write_to<W: Write>(&self, mut writer: W) -> Result<()> {
-        write_box!(writer, self.ftyp_box);
-        write_box!(writer, self.moov_box);
+        self.write_to_borrowed_writer(&mut writer)
+    }
+
+    fn write_to_borrowed_writer<W: Write>(&self, writer: &mut W) -> Result<()> {
+        write_box!(*writer, self.ftyp_box);
+        write_box!(*writer, self.moov_box);
         Ok(())
     }
 }

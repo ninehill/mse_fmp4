@@ -1,9 +1,7 @@
 //! I/O related constituent elements.
 use crate::Result;
 use byteorder::{ReadBytesExt, WriteBytesExt};
-use std::{
-    io::{sink, Read, Result as IoResult, Sink, Write},
-};
+use std::io::{sink, Read, Result as IoResult, Sink, Write};
 
 const FIRST_U32_BYTE: u32 = 0xFF000000;
 const SECOND_U32_BYTE: u32 = 0x00FF0000;
@@ -14,6 +12,9 @@ const FOURTH_U32_BYTE: u32 = 0x000000FF;
 pub trait WriteTo {
     /// Writes this object to the given byte-oriented sink.
     fn write_to<W: Write>(&self, writer: W) -> Result<()>;
+
+    /// Writes this object to a given byte-oriented borrowed sink.
+    fn write_to_borrowed_writer<W: Write>(&self, writer: &mut W) -> Result<()>;
 }
 
 #[derive(Debug)]

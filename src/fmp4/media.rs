@@ -7,7 +7,7 @@ use std::io::Write;
 ///
 /// [media_segment]: https://w3c.github.io/media-source/isobmff-byte-stream-format.html#iso-media-segments
 #[allow(missing_docs)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct MediaSegment {
     pub emsg_boxes: Vec<EventMessageBox>,
     pub moof_box: MovieFragmentBox,
@@ -15,19 +15,23 @@ pub struct MediaSegment {
 }
 impl WriteTo for MediaSegment {
     fn write_to<W: Write>(&self, mut writer: W) -> Result<()> {
+        self.write_to_borrowed_writer(&mut writer)
+    }
+
+    fn write_to_borrowed_writer<W: Write>(&self, writer: &mut W) -> Result<()> {
         track_assert!(!self.mdat_boxes.is_empty(), ErrorKind::InvalidInput);
         if !self.emsg_boxes.is_empty() {
-            write_boxes!(writer, &self.emsg_boxes);
+            write_boxes!(*writer, &self.emsg_boxes);
         }
-        write_box!(writer, self.moof_box);
-        write_boxes!(writer, &self.mdat_boxes);
+        write_box!(*writer, self.moof_box);
+        write_boxes!(*writer, &self.mdat_boxes);
         Ok(())
     }
 }
 
 /// 8.1.1 Media Data Box (ISO/IEC 14496-12).
 #[allow(missing_docs)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MediaDataBox {
     pub data: Vec<u8>,
 }
@@ -45,7 +49,7 @@ impl Mp4Box for MediaDataBox {
 
 /// 8.8.4 Movie Fragment Box (ISO/IEC 14496-12).
 #[allow(missing_docs)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct MovieFragmentBox {
     pub mfhd_box: MovieFragmentHeaderBox,
     pub traf_boxes: Vec<TrackFragmentBox>,
@@ -68,7 +72,7 @@ impl Mp4Box for MovieFragmentBox {
 }
 
 /// 8.8.5 Movie Fragment Header Box (ISO/IEC 14496-12).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MovieFragmentHeaderBox {
     /// The number associated with this fragment.
     pub sequence_number: u32,
@@ -98,7 +102,7 @@ impl Default for MovieFragmentHeaderBox {
 
 /// 8.8.6 Track Fragment Box (ISO/IEC 14496-12).
 #[allow(missing_docs)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TrackFragmentBox {
     pub tfhd_box: TrackFragmentHeaderBox,
     pub tfdt_box: TrackFragmentBaseMediaDecodeTimeBox,
@@ -139,7 +143,7 @@ impl Mp4Box for TrackFragmentBox {
 
 /// 8.8.7 Track Fragment Header Box (ISO/IEC 14496-12).
 #[allow(missing_docs)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TrackFragmentHeaderBox {
     track_id: u32,
     pub duration_is_empty: bool,
@@ -204,7 +208,7 @@ impl Mp4Box for TrackFragmentHeaderBox {
 
 /// 8.8.12 Track fragment decode time (ISO/IEC 14496-12).
 #[allow(missing_docs)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TrackFragmentBaseMediaDecodeTimeBox {
     pub base_media_decode_time : u64    
 }
@@ -235,7 +239,7 @@ impl Mp4Box for TrackFragmentBaseMediaDecodeTimeBox {
 
 /// 8.8.8 Track Fragment Run Box (ISO/IEC 14496-12).
 #[allow(missing_docs)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TrackRunBox {
     pub data_offset: Option<i32>,
     pub first_sample_flags: Option<SampleFlags>,

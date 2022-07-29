@@ -235,6 +235,7 @@ pub enum NalUnitType {
     SubsetSequenceParameterSet = 15,
     CodedSliceOfAnAuxiliaryCodedPictureWithoutPartitioning = 19,
     CodedSliceExtension = 20,
+    CodedSliceExtensionForDepthViewComponents = 21,
 }
 impl NalUnitType {
     fn from_u8(n: u8) -> Result<Self> {
@@ -256,6 +257,7 @@ impl NalUnitType {
             15 => NalUnitType::SubsetSequenceParameterSet,
             19 => NalUnitType::CodedSliceOfAnAuxiliaryCodedPictureWithoutPartitioning,
             20 => NalUnitType::CodedSliceExtension,
+            21 => NalUnitType::CodedSliceExtensionForDepthViewComponents,
             _ => track_panic!(ErrorKind::InvalidInput),
         })
     }
