@@ -15,7 +15,7 @@ codecov = {repository = "sile/mse_fmp4"}
 
 [dependencies]
 byteorder = "1"
-mpeg2ts= {path = "../mpeg2ts"}
+mpeg2ts= {git = "https://github.com/ninehill/mpeg2ts"}
 trackable = "0.2"
 
 [dev-dependencies]
