@@ -10,9 +10,9 @@ pub use self::initialization::{
     VideoMediaHeaderBox,
 };
 pub use self::media::{
-    MediaDataBox, MediaSegment, MovieFragmentBox, MovieFragmentHeaderBox, Sample, SampleFlags,
-    TrackFragmentBaseMediaDecodeTimeBox, TrackFragmentBox, TrackFragmentHeaderBox, TrackRunBox,
-    EventMessageBox
+    EventMessageBox, MediaDataBox, MediaSegment, MovieFragmentBox, MovieFragmentHeaderBox, Sample,
+    SampleFlags, TrackFragmentBaseMediaDecodeTimeBox, TrackFragmentBox, TrackFragmentHeaderBox,
+    TrackRunBox,
 };
 
 const VIDEO_TRACK_ID: u32 = 1;
@@ -20,4 +20,4 @@ const AUDIO_TRACK_ID: u32 = 2;
 
 mod common;
 mod initialization;
-mod media;
+pub mod media;
