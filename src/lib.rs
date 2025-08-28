@@ -113,12 +113,13 @@ pub use error::{Error, ErrorKind};
 
 pub mod aac;
 pub mod avc;
+mod error;
+pub mod extended_configuration_data;
 pub mod fmp4;
+pub mod hvc;
 pub mod io;
 pub mod mpeg2_ts;
 pub mod mpeg2_ts_video;
-pub mod extended_configuration_data;
-mod error;
 
 /// This crate specific `Result` type.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
