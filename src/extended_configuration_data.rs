@@ -6,8 +6,6 @@ pub struct ExtendedConfigurationData {
     pub bit_depth_chroma_minus_8: u64,
     pub qp_prime_y_zero_transform_bypass: bool,
     pub seq_scaling_matrix_present: bool,
-    pub seq_scaling_list_4x4: Option<Vec<Vec<i64>>>,
-    pub seq_scaling_list_4x4_use_default: Option<Vec<bool>>,
-    pub seq_scaling_list_8x8: Option<Vec<Vec<i64>>>,
-    pub seq_scaling_list_8x8_use_default: Option<Vec<bool>>,
+    pub seq_scaling_list_present_flags: Vec<bool>,
+    pub delta_scales: Vec<i64>,
 }

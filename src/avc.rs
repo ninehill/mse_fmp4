@@ -6,23 +6,6 @@ use byteorder::ReadBytesExt;
 use core::panic;
 use std::io::{Read, Write};
 
-const DEFAULT_4X4_INTRA_SCALING_LIST: [u8; 16] = [
-    6, 13, 13, 20, 20, 20, 28, 28, 28, 28, 32, 32, 32, 32, 37, 37,
-];
-const DEFAULT_4X4_INTER_SCALING_LIST: [u8; 16] = [
-    10, 14, 14, 20, 20, 20, 24, 24, 24, 24, 27, 27, 27, 30, 30, 34,
-];
-const DEFAULT_8X8_INTRA_SCALING_LIST: [u8; 64] = [
-    6, 10, 10, 13, 11, 13, 16, 16, 16, 16, 18, 18, 18, 18, 18, 23, 23, 23, 23, 23, 23, 25, 25, 25,
-    25, 25, 25, 25, 27, 27, 27, 27, 27, 27, 27, 27, 29, 29, 29, 29, 29, 29, 29, 31, 31, 31, 31, 31,
-    31, 33, 33, 33, 33, 33, 36, 36, 36, 36, 38, 38, 38, 40, 40, 42,
-];
-const DEFAULT_8X8_INTER_SCALING_LIST: [u8; 64] = [
-    9, 13, 13, 15, 13, 15, 17, 17, 17, 17, 19, 19, 19, 19, 19, 21, 21, 21, 21, 21, 21, 22, 22, 22,
-    22, 22, 22, 22, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 27, 27, 27, 27, 27,
-    27, 28, 28, 28, 28, 28, 30, 30, 30, 30, 32, 32, 32, 33, 33, 35,
-];
-
 /// AVC decoder configuration record.
 #[allow(missing_docs)]
 #[derive(Debug, Clone)]
@@ -78,7 +61,34 @@ impl AvcDecoderConfigurationRecord {
                 bit_writer.write_ue(extended_configuration_data.bit_depth_chroma_minus_8)?;
                 bit_writer
                     .write_bool(extended_configuration_data.qp_prime_y_zero_transform_bypass)?;
-                bit_writer.write_bool(false)?; //False for scaling matrix
+                bit_writer.write_bool(extended_configuration_data.seq_scaling_matrix_present)?;
+                if extended_configuration_data.seq_scaling_matrix_present {
+                    let entry_count = if extended_configuration_data.chroma_format != 3 {
+                        8
+                    } else {
+                        12
+                    };
+                    let mut delta_scales = extended_configuration_data.delta_scales.iter();
+                    for i in 0..entry_count {
+                        let scaling_list_present_flag =
+                            extended_configuration_data.seq_scaling_list_present_flags[i];
+                        bit_writer.write_bool(scaling_list_present_flag)?;
+                        if scaling_list_present_flag {
+                            let last_scale = 8;
+                            let mut next_scale = 8;
+                            for _ in 0..entry_count {
+                                if next_scale != 0 {
+                                    let delta_scale = delta_scales.next().unwrap_or(&0);
+                                    bit_writer.write_se(*delta_scale)?;
+                                    next_scale = (last_scale + *delta_scale + 256) % 256;
+                                }
+                                if next_scale == 0 {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
                 bit_writer.flush()?;
             }
             _ => {}
@@ -116,30 +126,6 @@ impl SpsSummary {
             - (self.frame_crop_top_offset as usize * 2)
     }
 
-    fn default_scaling_list_for_index(index: usize) -> Vec<i64> {
-        if index < 3 {
-            DEFAULT_4X4_INTRA_SCALING_LIST
-                .iter()
-                .map(|&v| v as i64)
-                .collect()
-        } else if index < 6 {
-            DEFAULT_4X4_INTER_SCALING_LIST
-                .iter()
-                .map(|&v| v as i64)
-                .collect()
-        } else if index % 2 == 0 {
-            DEFAULT_8X8_INTRA_SCALING_LIST
-                .iter()
-                .map(|&v| v as i64)
-                .collect()
-        } else {
-            DEFAULT_8X8_INTER_SCALING_LIST
-                .iter()
-                .map(|&v| v as i64)
-                .collect()
-        }
-    }
-
     pub fn read_from<R: Read>(mut reader: R) -> Result<Self> {
         let profile_idc = track_io!(reader.read_u8())?;
         let constraint_set_flag = track_io!(reader.read_u8())?;
@@ -165,75 +151,49 @@ impl SpsSummary {
                 let qp_prime_y_zero_transform_bypass = track!(reader.read_bit())? == 1;
                 let seq_scaling_matrix_present = track!(reader.read_bit())? == 1;
 
-                let mut seq_scaling_list_4x4 = None;
-                let mut seq_scaling_list_8x8 = None;
-                let mut seq_scaling_list_4x4_use_default = None;
-                let mut seq_scaling_list_8x8_use_default = None;
+                let mut seq_scaling_list_present_flags = Vec::new();
+                let mut delta_scales = Vec::new();
 
                 if seq_scaling_matrix_present {
                     let entry_count = if chroma_format != 3 { 8 } else { 12 };
-                    let mut sl_4x4 = vec![vec![0; 16]; entry_count];
-                    let mut sl_8x8 = vec![vec![0; 64]; entry_count];
-                    let mut sl_default_4x4_flag = vec![false; entry_count];
-                    let mut sl_default_8x8_flag = vec![false; entry_count];
+
+                    seq_scaling_list_present_flags = vec![false; entry_count];
+                    delta_scales = vec![0; entry_count];
 
                     for i in 0..entry_count {
-                        let scaling_list_present = track!(reader.read_bit())? == 1;
-                        if scaling_list_present {
+                        seq_scaling_list_present_flags[i] = track!(reader.read_bit())? == 1;
+                        if seq_scaling_list_present_flags[i] {
                             let mut last_scale = 8;
                             let mut next_scale = 8;
                             if i < 6 {
-                                for j in 0..16 {
+                                for _ in 0..16 {
                                     if next_scale != 0 {
                                         let delta_scale = track!(reader.read_se())?;
+                                        delta_scales[i] = delta_scale;
                                         next_scale = (last_scale + delta_scale + 256) % 256;
-                                        sl_default_4x4_flag[i] = j == 0 && next_scale == 0;
                                     }
-                                    sl_4x4[i][j] = if next_scale == 0 {
-                                        last_scale
+                                    last_scale = if next_scale == 0 {
+                                        break;
                                     } else {
                                         next_scale
-                                    };
-                                    last_scale = sl_4x4[i][j];
+                                    }
                                 }
                             } else {
-                                for j in 0..64 {
+                                for _ in 0..64 {
                                     if next_scale != 0 {
                                         let delta_scale = track!(reader.read_se())?;
+                                        delta_scales[i] = delta_scale;
                                         next_scale = (last_scale + delta_scale + 256) % 256;
-                                        sl_default_8x8_flag[i - 6] = j == 0 && next_scale == 0;
                                     }
-                                    sl_8x8[i - 6][j] = if next_scale == 0 {
-                                        last_scale
+                                    last_scale = if next_scale == 0 {
+                                        break;
                                     } else {
                                         next_scale
-                                    };
-                                    last_scale = sl_8x8[i - 6][j];
+                                    }
                                 }
-                            }
-                        } else {
-                            // scaling list not present, use the fallback method A
-                            match i {
-                                0 | 3 | 6 | 7 => {
-                                    sl_4x4[i] = Self::default_scaling_list_for_index(i);
-                                    sl_default_4x4_flag[i] = true;
-                                }
-                                1 | 2 | 4 | 5 => {
-                                    sl_4x4[i] = sl_4x4[i - 1].clone();
-                                    sl_default_4x4_flag[i] = sl_default_4x4_flag[i - 1];
-                                }
-                                8..=11 => {
-                                    sl_8x8[i - 6] = sl_8x8[i - 8].clone();
-                                    sl_default_8x8_flag[i - 6] = sl_default_8x8_flag[i - 8];
-                                }
-                                _ => panic!("scaling list index out of range"),
                             }
                         }
                     }
-                    seq_scaling_list_4x4 = Some(sl_4x4);
-                    seq_scaling_list_8x8 = Some(sl_8x8);
-                    seq_scaling_list_4x4_use_default = Some(sl_default_4x4_flag);
-                    seq_scaling_list_8x8_use_default = Some(sl_default_8x8_flag);
                 }
 
                 extended_data = Some(ExtendedConfigurationData {
@@ -243,10 +203,8 @@ impl SpsSummary {
                     bit_depth_chroma_minus_8,
                     qp_prime_y_zero_transform_bypass,
                     seq_scaling_matrix_present,
-                    seq_scaling_list_4x4,
-                    seq_scaling_list_4x4_use_default,
-                    seq_scaling_list_8x8,
-                    seq_scaling_list_8x8_use_default,
+                    seq_scaling_list_present_flags,
+                    delta_scales,
                 })
             }
             _ => {}
