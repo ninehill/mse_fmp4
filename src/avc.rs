@@ -1,5 +1,5 @@
 //! AVC (H.264) related constituent elements.
-use crate::extended_configuration_data::{self, ExtendedConfigurationData};
+use crate::extended_configuration_data::ExtendedConfigurationData;
 use crate::io::{AvcBitReader, AvcBitWriter};
 use crate::{ErrorKind, Result};
 use byteorder::ReadBytesExt;
@@ -68,30 +68,28 @@ impl AvcDecoderConfigurationRecord {
                     } else {
                         12
                     };
-                    let mut delta_scales = extended_configuration_data.delta_scales.iter();
                     for i in 0..entry_count {
                         let scaling_list_present_flag =
                             extended_configuration_data.seq_scaling_list_present_flags[i];
                         bit_writer.write_bool(scaling_list_present_flag)?;
                         if scaling_list_present_flag {
-                            let last_scale = 8;
-                            let mut next_scale = 8;
-                            for _ in 0..entry_count {
-                                if next_scale != 0 {
-                                    let delta_scale = delta_scales.next().unwrap_or(&0);
-                                    bit_writer.write_se(*delta_scale)?;
-                                    next_scale = (last_scale + *delta_scale + 256) % 256;
-                                }
-                                if next_scale == 0 {
-                                    break;
-                                }
-                            }
+                            extended_configuration_data.delta_scales[i]
+                                .clone()
+                                .into_iter()
+                                .for_each(|delta_scale| {
+                                    track!(bit_writer.write_se(delta_scale)).unwrap()
+                                });
                         }
                     }
                 }
                 bit_writer.flush()?;
             }
-            _ => {}
+            _ => {
+                println!(
+                    "No extended configuration data for profile_idc: {}",
+                    self.profile_idc
+                );
+            }
         }
 
         Ok(())
@@ -152,49 +150,34 @@ impl SpsSummary {
                 let seq_scaling_matrix_present = track!(reader.read_bit())? == 1;
 
                 let mut seq_scaling_list_present_flags = Vec::new();
-                let mut delta_scales = Vec::new();
-
-                if seq_scaling_matrix_present {
+                let delta_scales = if seq_scaling_matrix_present {
                     let entry_count = if chroma_format != 3 { 8 } else { 12 };
-
                     seq_scaling_list_present_flags = vec![false; entry_count];
-                    delta_scales = vec![0; entry_count];
-
+                    let mut delta_scales = vec![Vec::new(); entry_count];
                     for i in 0..entry_count {
                         seq_scaling_list_present_flags[i] = track!(reader.read_bit())? == 1;
                         if seq_scaling_list_present_flags[i] {
                             let mut last_scale = 8;
                             let mut next_scale = 8;
-                            if i < 6 {
-                                for _ in 0..16 {
-                                    if next_scale != 0 {
-                                        let delta_scale = track!(reader.read_se())?;
-                                        delta_scales[i] = delta_scale;
-                                        next_scale = (last_scale + delta_scale + 256) % 256;
-                                    }
-                                    last_scale = if next_scale == 0 {
-                                        break;
-                                    } else {
-                                        next_scale
-                                    }
+                            let scaling_list_size = if i < 6 { 16 } else { 64 };
+                            for _ in 0..scaling_list_size {
+                                if next_scale != 0 {
+                                    let delta_scale = track!(reader.read_se())?;
+                                    delta_scales[i].push(delta_scale);
+                                    next_scale = (last_scale + delta_scale + 256) % 256;
                                 }
-                            } else {
-                                for _ in 0..64 {
-                                    if next_scale != 0 {
-                                        let delta_scale = track!(reader.read_se())?;
-                                        delta_scales[i] = delta_scale;
-                                        next_scale = (last_scale + delta_scale + 256) % 256;
-                                    }
-                                    last_scale = if next_scale == 0 {
-                                        break;
-                                    } else {
-                                        next_scale
-                                    }
+                                last_scale = if next_scale == 0 {
+                                    break;
+                                } else {
+                                    next_scale
                                 }
                             }
                         }
                     }
-                }
+                    delta_scales
+                } else {
+                    Vec::new()
+                };
 
                 extended_data = Some(ExtendedConfigurationData {
                     chroma_format,

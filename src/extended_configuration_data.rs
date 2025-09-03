@@ -7,5 +7,5 @@ pub struct ExtendedConfigurationData {
     pub qp_prime_y_zero_transform_bypass: bool,
     pub seq_scaling_matrix_present: bool,
     pub seq_scaling_list_present_flags: Vec<bool>,
-    pub delta_scales: Vec<i64>,
+    pub delta_scales: Vec<Vec<i64>>,
 }

@@ -265,7 +265,9 @@ fn read_avc_aac_stream<R: ReadTsPacket>(ts_reader: R) -> Result<(AvcStream, AacS
                         level_idc: sps_summary.level_idc,
                         sequence_parameter_set: sps,
                         picture_parameter_set: pps,
-                        extended_configuration_data: None,
+                        extended_configuration_data: sps_summary
+                            .extended_configuration_data
+                            .clone(),
                     },
                     width: sps_summary.width(),
                     height: sps_summary.height(),
@@ -361,7 +363,6 @@ impl<R> TsPacketReader<R> {
     }
 }
 impl<R: ReadTsPacket> ReadTsPacket for TsPacketReader<R> {
-
     fn peek_ts_packet(&mut self) -> Option<&TsPacket> {
         None
     }
