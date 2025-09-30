@@ -853,6 +853,7 @@ impl Mp4Box for AvcConfigurationBox {
     }
 }
 
+#[allow(missing_docs)]
 #[derive(Debug)]
 pub struct HvcSampleEntry {
     pub width: u16,
@@ -861,18 +862,18 @@ pub struct HvcSampleEntry {
 }
 impl HvcSampleEntry {
     fn write_box_payload_without_hvcc<W: Write>(&self, mut writer: W) -> Result<()> {
-        write_zeroes!(writer, 6); // reserved
+        write_zeroes!(writer, 6);
         write_u16!(writer, 1); // data_reference_index
 
         write_zeroes!(writer, 16); // reserved
         write_u16!(writer, self.width);
         write_u16!(writer, self.height);
-        write_u32!(writer, 0x0048_0000); // horizresolution
-        write_u32!(writer, 0x0048_0000); // vertresolution
+        write_u32!(writer, 0x0048_0000); // horizresolution // 72 dpi
+        write_u32!(writer, 0x0048_0000); // vertresolution // 72 dpi
         write_zeroes!(writer, 4); // reserved
         write_u16!(writer, 1); // frame_count
 
-        write_zeroes!(writer, 32);
+        write_zeroes!(writer, 32); // compressorname?
         write_u16!(writer, 0x0018); // depth
         write_i16!(writer, -1); // pre_defined
 
@@ -883,8 +884,7 @@ impl Mp4Box for HvcSampleEntry {
     const BOX_TYPE: [u8; 4] = *b"hev1";
 
     fn box_payload_size(&self) -> Result<u32> {
-        let mut size = 0;
-        size += track!(ByteCounter::calculate(
+        let mut size = track!(ByteCounter::calculate(
             |w| self.write_box_payload_without_hvcc(w)
         ))? as u32;
         size += box_size!(self.hvcc_box);
