@@ -1,5 +1,5 @@
 //! AVC (H.264) related constituent elements.
-use crate::extended_configuration_data::{self, ExtendedConfigurationData};
+use crate::extended_configuration_data::ExtendedConfigurationData;
 use crate::io::{AvcBitReader, AvcBitWriter};
 use crate::{ErrorKind, Result};
 use byteorder::ReadBytesExt;
@@ -54,16 +54,42 @@ impl AvcDecoderConfigurationRecord {
                         .unwrap_or_else(|| {
                             panic!("Must have optional flag set when chroma format is YUV444")
                         });
-                        bit_writer.write_bool(separate_color_plane)?;
+                    bit_writer.write_bool(separate_color_plane)?;
                 }
 
                 bit_writer.write_ue(extended_configuration_data.bit_depth_luma_minus_8)?;
                 bit_writer.write_ue(extended_configuration_data.bit_depth_chroma_minus_8)?;
-                bit_writer.write_bool(extended_configuration_data.qp_prime_y_zero_transform_bypass)?;
-                bit_writer.write_bool(false)?; //False for scaling matrix
+                bit_writer
+                    .write_bool(extended_configuration_data.qp_prime_y_zero_transform_bypass)?;
+                bit_writer.write_bool(extended_configuration_data.seq_scaling_matrix_present)?;
+                if extended_configuration_data.seq_scaling_matrix_present {
+                    let entry_count = if extended_configuration_data.chroma_format != 3 {
+                        8
+                    } else {
+                        12
+                    };
+                    for i in 0..entry_count {
+                        let scaling_list_present_flag =
+                            extended_configuration_data.seq_scaling_list_present_flags[i];
+                        bit_writer.write_bool(scaling_list_present_flag)?;
+                        if scaling_list_present_flag {
+                            extended_configuration_data.delta_scales[i]
+                                .clone()
+                                .into_iter()
+                                .for_each(|delta_scale| {
+                                    track!(bit_writer.write_se(delta_scale)).unwrap()
+                                });
+                        }
+                    }
+                }
                 bit_writer.flush()?;
             }
-            _ => {}
+            _ => {
+                println!(
+                    "No extended configuration data for profile_idc: {}",
+                    self.profile_idc
+                );
+            }
         }
 
         Ok(())
@@ -121,18 +147,47 @@ impl SpsSummary {
                 let bit_depth_luma_minus_8 = track!(reader.read_ue())?;
                 let bit_depth_chroma_minus_8 = track!(reader.read_ue())?;
                 let qp_prime_y_zero_transform_bypass = track!(reader.read_bit())? == 1;
-                let scaling_matrix_present = track!(reader.read_bit())? == 1;
+                let seq_scaling_matrix_present = track!(reader.read_bit())? == 1;
 
-                if scaling_matrix_present {
-                    panic!("Reading scaling matrix unsupported");
-                }
+                let mut seq_scaling_list_present_flags = Vec::new();
+                let delta_scales = if seq_scaling_matrix_present {
+                    let entry_count = if chroma_format != 3 { 8 } else { 12 };
+                    seq_scaling_list_present_flags = vec![false; entry_count];
+                    let mut delta_scales = vec![Vec::new(); entry_count];
+                    for i in 0..entry_count {
+                        seq_scaling_list_present_flags[i] = track!(reader.read_bit())? == 1;
+                        if seq_scaling_list_present_flags[i] {
+                            let mut last_scale = 8;
+                            let mut next_scale = 8;
+                            let scaling_list_size = if i < 6 { 16 } else { 64 };
+                            for _ in 0..scaling_list_size {
+                                if next_scale != 0 {
+                                    let delta_scale = track!(reader.read_se())?;
+                                    delta_scales[i].push(delta_scale);
+                                    next_scale = (last_scale + delta_scale + 256) % 256;
+                                }
+                                last_scale = if next_scale == 0 {
+                                    break;
+                                } else {
+                                    next_scale
+                                }
+                            }
+                        }
+                    }
+                    delta_scales
+                } else {
+                    Vec::new()
+                };
 
                 extended_data = Some(ExtendedConfigurationData {
-                    chroma_format: chroma_format,
-                    separate_color_plane: separate_color_plane,
-                    bit_depth_luma_minus_8: bit_depth_luma_minus_8,
-                    bit_depth_chroma_minus_8: bit_depth_chroma_minus_8,
-                    qp_prime_y_zero_transform_bypass: qp_prime_y_zero_transform_bypass,
+                    chroma_format,
+                    separate_color_plane,
+                    bit_depth_luma_minus_8,
+                    bit_depth_chroma_minus_8,
+                    qp_prime_y_zero_transform_bypass,
+                    seq_scaling_matrix_present,
+                    seq_scaling_list_present_flags,
+                    delta_scales,
                 })
             }
             _ => {}

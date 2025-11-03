@@ -3,9 +3,9 @@ use crate::avc::{
     AvcDecoderConfigurationRecord, ByteStreamFormatNalUnits, NalUnit, NalUnitType, SpsSummary,
 };
 use crate::fmp4::{
-    AacSampleEntry, AvcConfigurationBox, AvcSampleEntry, InitializationSegment, MediaDataBox,
-    MediaSegment, MovieExtendsHeaderBox, Mp4Box, Mpeg4EsDescriptorBox, Sample, SampleEntry,
-    SampleFlags, TrackBox, TrackExtendsBox, TrackFragmentBox, EventMessageBox,
+    AacSampleEntry, AvcConfigurationBox, AvcSampleEntry, EventMessageBox, InitializationSegment,
+    MediaDataBox, MediaSegment, MovieExtendsHeaderBox, Mp4Box, Mpeg4EsDescriptorBox, Sample,
+    SampleEntry, SampleFlags, TrackBox, TrackExtendsBox, TrackFragmentBox,
 };
 use crate::io::ByteCounter;
 use crate::{Error, ErrorKind, Result};
@@ -96,7 +96,6 @@ fn make_media_segment(avc_stream: AvcStream) -> Result<MediaSegment> {
     });
     traf.trun_box.samples = avc_stream.samples;
     segment.moof_box.traf_boxes.push(traf);
-
 
     // mdat and offsets adjustment
     let mut counter = ByteCounter::with_sink();
@@ -204,7 +203,9 @@ fn read_avc_stream<R: ReadTsPacket>(ts_reader: R) -> Result<AvcStream> {
                         level_idc: sps_summary.level_idc,
                         sequence_parameter_set: sps,
                         picture_parameter_set: pps,
-                        extended_configuration_data: None,
+                        extended_configuration_data: sps_summary
+                            .extended_configuration_data
+                            .clone(),
                     },
                     width: sps_summary.width(),
                     height: sps_summary.height(),
@@ -232,9 +233,9 @@ fn read_avc_stream<R: ReadTsPacket>(ts_reader: R) -> Result<AvcStream> {
                 composition_time_offset: Some(sample_composition_time_offset),
             });
 
-            temp_count= temp_count +1;
+            temp_count = temp_count + 1;
 
-            if temp_count == 20{
+            if temp_count == 20 {
                 break;
             }
         }
@@ -278,7 +279,6 @@ impl<R> TsPacketReader<R> {
     }
 }
 impl<R: ReadTsPacket> ReadTsPacket for TsPacketReader<R> {
-
     fn peek_ts_packet(&mut self) -> Option<&TsPacket> {
         None
     }

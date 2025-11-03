@@ -14,6 +14,11 @@ use trackable::error::Failure;
 fn main() {
     let matches = App::new("ts_to_fmp4")
         .arg(
+            Arg::with_name("INPUT_FILE")
+                .long("input-file")
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("OUTPUT_FILE_PREFIX")
                 .long("output-file-prefix")
                 .takes_value(true)
@@ -21,11 +26,12 @@ fn main() {
         )
         .get_matches();
     let output_file_prefix = matches.value_of("OUTPUT_FILE_PREFIX").unwrap();
-    let f = File::open("/Users/joe/Desktop/MQ_9 Thomas Fire.ts").unwrap();
+    let input_file = matches.value_of("INPUT_FILE").unwrap();
+    let f = File::open(input_file).unwrap();
 
     let (initialization_segment, media_segment) =
         track_try_unwrap!(mpeg2_ts_video::to_fmp4(TsPacketReader::new(f)));
-        //track_try_unwrap!(mpeg2_ts_video::to_fmp4(TsPacketReader::new(std::io::stdin())));
+    //track_try_unwrap!(mpeg2_ts_video::to_fmp4(TsPacketReader::new(std::io::stdin())));
 
     let path = format!("{}-init.mp4", output_file_prefix);
     let out = track_try_unwrap!(File::create(&path).map_err(Failure::from_error));

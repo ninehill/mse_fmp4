@@ -92,6 +92,12 @@ impl<R: Read> AvcBitReader<R> {
         track!(self.read_exp_golomb_code())
     }
 
+    pub fn read_se(&mut self) -> Result<i64> {
+        let code_num = track!(self.read_exp_golomb_code())?;
+        let value = i64::pow(-1, code_num as u32 + 1) * (code_num as f64 / 2.0).ceil() as i64;
+        Ok(value)
+    }
+
     fn read_exp_golomb_code(&mut self) -> Result<u64> {
         let mut leading_zeros = 0;
         while 0 == track!(self.read_bit())? {
@@ -217,6 +223,15 @@ impl<W: Write> AvcBitWriter<W> {
         Ok(())
     }
 
+    pub fn write_se(&mut self, value: i64) -> Result<()> {
+        let code_num = if value > 0 {
+            (value as u64) * 2 - 1
+        } else {
+            (-value as u64) * 2
+        };
+        self.write_ue(code_num)
+    }
+
     pub fn flush(&mut self) -> Result<()> {
         if self.bit_position > 0 {
             track_io!(self.stream.write_u8(self.byte))?;
@@ -270,6 +285,23 @@ mod tests {
         let mut reader = AvcBitReader::new(buffer.as_slice());
         for i in 0..1_001 {
             assert_eq!(reader.read_ue().unwrap(), i as u64);
+        }
+    }
+
+    #[test]
+    fn test_se() {
+        let mut buffer = Vec::<u8>::new();
+        let mut writer = AvcBitWriter::new(&mut buffer);
+
+        for i in -500..501 {
+            writer.write_se(i as i64).unwrap();
+        }
+
+        writer.flush().unwrap();
+
+        let mut reader = AvcBitReader::new(buffer.as_slice());
+        for i in -500..501 {
+            assert_eq!(reader.read_se().unwrap(), i as i64);
         }
     }
 
