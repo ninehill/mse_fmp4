@@ -1,6 +1,7 @@
 use crate::aac::{AacProfile, ChannelConfiguration, SamplingFrequency};
 use crate::avc::AvcDecoderConfigurationRecord;
 use crate::fmp4::{Mp4Box, AUDIO_TRACK_ID, VIDEO_TRACK_ID};
+use crate::hvc::HvcDecoderConfigurationRecord;
 use crate::io::{ByteCounter, WriteTo};
 use crate::{ErrorKind, Result};
 use std::ffi::CString;
@@ -45,15 +46,15 @@ pub struct FileTypeBox {
 
 impl FileTypeBox {
     pub fn new_with_default() -> Self {
-        FileTypeBox { 
-            major_brand: "isom".to_string(), 
-            minor_version: 512, 
-            compatible_brands: Vec::<String>::new() }
+        FileTypeBox {
+            major_brand: "isom".to_string(),
+            minor_version: 512,
+            compatible_brands: Vec::<String>::new(),
+        }
     }
 }
 
 impl Mp4Box for FileTypeBox {
-
     const BOX_TYPE: [u8; 4] = *b"ftyp";
 
     fn box_payload_size(&self) -> Result<u32> {
@@ -63,7 +64,7 @@ impl Mp4Box for FileTypeBox {
         for s in &self.compatible_brands {
             size += s.len();
         }
-        
+
         Ok(size as u32)
     }
     fn write_box_payload<W: Write>(&self, mut writer: W) -> Result<()> {
@@ -72,7 +73,7 @@ impl Mp4Box for FileTypeBox {
         for b in &self.compatible_brands {
             write_all!(writer, b.as_bytes()); // minor_version
         }
-        
+
         Ok(())
     }
 }
@@ -770,18 +771,21 @@ impl Mp4Box for SampleToChunkBox {
 #[derive(Debug)]
 pub enum SampleEntry {
     Avc(AvcSampleEntry),
+    Hvc(HvcSampleEntry),
     Aac(AacSampleEntry),
 }
 impl SampleEntry {
     fn box_size(&self) -> Result<u32> {
         match *self {
             SampleEntry::Avc(ref x) => track!(x.box_size()),
+            SampleEntry::Hvc(ref x) => track!(x.box_size()),
             SampleEntry::Aac(ref x) => track!(x.box_size()),
         }
     }
     fn write_box<W: Write>(&self, writer: W) -> Result<()> {
         match *self {
             SampleEntry::Avc(ref x) => track!(x.write_box(writer)),
+            SampleEntry::Hvc(ref x) => track!(x.write_box(writer)),
             SampleEntry::Aac(ref x) => track!(x.write_box(writer)),
         }
     }
@@ -839,6 +843,67 @@ pub struct AvcConfigurationBox {
 }
 impl Mp4Box for AvcConfigurationBox {
     const BOX_TYPE: [u8; 4] = *b"avcC";
+
+    fn box_payload_size(&self) -> Result<u32> {
+        let size = track!(ByteCounter::calculate(|w| self.configuration.write_to(w)))?;
+        Ok(size as u32)
+    }
+    fn write_box_payload<W: Write>(&self, writer: W) -> Result<()> {
+        track!(self.configuration.write_to(writer))
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct HvcSampleEntry {
+    pub width: u16,
+    pub height: u16,
+    pub hvcc_box: HvcConfigurationBox,
+}
+impl HvcSampleEntry {
+    fn write_box_payload_without_hvcc<W: Write>(&self, mut writer: W) -> Result<()> {
+        write_zeroes!(writer, 6);
+        write_u16!(writer, 1); // data_reference_index
+
+        write_zeroes!(writer, 16); // reserved
+        write_u16!(writer, self.width);
+        write_u16!(writer, self.height);
+        write_u32!(writer, 0x0048_0000); // horizresolution // 72 dpi
+        write_u32!(writer, 0x0048_0000); // vertresolution // 72 dpi
+        write_zeroes!(writer, 4); // reserved
+        write_u16!(writer, 1); // frame_count
+
+        write_zeroes!(writer, 32); // compressorname?
+        write_u16!(writer, 0x0018); // depth
+        write_i16!(writer, -1); // pre_defined
+
+        Ok(())
+    }
+}
+impl Mp4Box for HvcSampleEntry {
+    const BOX_TYPE: [u8; 4] = *b"hev1";
+
+    fn box_payload_size(&self) -> Result<u32> {
+        let mut size = track!(ByteCounter::calculate(
+            |w| self.write_box_payload_without_hvcc(w)
+        ))? as u32;
+        size += box_size!(self.hvcc_box);
+        Ok(size)
+    }
+    fn write_box_payload<W: Write>(&self, mut writer: W) -> Result<()> {
+        track!(self.write_box_payload_without_hvcc(&mut writer))?;
+        write_box!(writer, self.hvcc_box);
+        Ok(())
+    }
+}
+/// Box that contains HVC Decoder Configuration Record.
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct HvcConfigurationBox {
+    pub configuration: HvcDecoderConfigurationRecord,
+}
+impl Mp4Box for HvcConfigurationBox {
+    const BOX_TYPE: [u8; 4] = *b"hvcC";
 
     fn box_payload_size(&self) -> Result<u32> {
         let size = track!(ByteCounter::calculate(|w| self.configuration.write_to(w)))?;
